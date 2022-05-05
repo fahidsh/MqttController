@@ -76,7 +76,7 @@ MQTTClient mqtt_client_var(&tcp_socket_subscriber);
 ********************************************************
 */
 bool is_command(std::string);
-void log_message(int, const char, ...);
+void log_message(int, const char *, ...);
 int correct_mqtt_client_name();
 int correct_mqtt_last_will_topic();
 int connect_to_wifi();
