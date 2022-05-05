@@ -75,8 +75,8 @@ MQTTClient mqtt_client_var(&tcp_socket_subscriber);
 
 ********************************************************
 */
-bool is_command(std::string);
 void log_message(int, const char *, ...);
+bool is_command(std::string);
 int correct_mqtt_client_name();
 int correct_mqtt_last_will_topic();
 int connect_to_wifi();
@@ -112,8 +112,19 @@ int main() {
     // restart_controller();
   }
 
+  Timer mqtt_check;
+  mqtt_check.start();
+
   while (CONTINUE_EXECUTION) {
+      long time_since_last_check = mqtt_check.elapsed_time().count()/1000;
+      if(time_since_last_check >= 1000) {
+          printf("Time: %lu ms\n", time_since_last_check);
+          mqtt_client_var.yield();
+          mqtt_check.reset();
+      }
   }
+
+  mqtt_check.stop();
   printf("Programm beendet, reset to continue\n");
 }
 
@@ -343,18 +354,20 @@ int set_mqtt_connection_params() {
 
   if (MQTT_CONNECTION.clientID.cstring != client_id) {
 
+      // create a ast will message, it is used when client is dead/disconnected
     MQTTPacket_willOptions WILL_MESSAGE;
     WILL_MESSAGE.qos = MQTT_PUB_QOS;
     WILL_MESSAGE.retained = MQTT_PUBLISH_RETAIN;
-    char *last_will_topic = (char *)mqtt_last_will_topic.c_str();
-    char *last_will_message = (char *)"0";
-    WILL_MESSAGE.message.cstring = last_will_message;
+    char *last_will_topic = (char *) mqtt_last_will_topic.c_str();
+    char *last_will_message = (char *) "0";
     WILL_MESSAGE.topicName.cstring = last_will_topic;
-
+    WILL_MESSAGE.message.cstring = last_will_message;
+    
     MQTT_CONNECTION.MQTTVersion = 3;
     MQTT_CONNECTION.struct_version = 0;
     MQTT_CONNECTION.clientID.cstring = client_id;
     MQTT_CONNECTION.will = WILL_MESSAGE;
+    MQTT_CONNECTION.willFlag = true;
 
     // MQTT_CONNECTION.cleansession = 1;
     if (strlen(MQTT_USER.c_str()) > 1) {
@@ -368,6 +381,24 @@ int set_mqtt_connection_params() {
   }
 
   return 0;
+}
+
+/**
+********************************************************
+
+********************************************************
+*/
+
+void show_mqtt_options(){
+    DEBUG_LOG(220, "Client Name: %s", MQTT_CONNECTION.clientID.cstring );
+    DEBUG_LOG(220, "Cleansession: %d", MQTT_CONNECTION.cleansession );
+    DEBUG_LOG(220, "Mqtt Version: %d", MQTT_CONNECTION.MQTTVersion );
+    DEBUG_LOG(220, "Mqtt Struct Version: %d", MQTT_CONNECTION.struct_version );    
+    DEBUG_LOG(220, "Mqtt User: %s", MQTT_CONNECTION.username.cstring );
+    DEBUG_LOG(220, "Mqtt Pass: %s", MQTT_CONNECTION.password.cstring );
+    DEBUG_LOG(220, "Mqtt Will Topic: %s", MQTT_CONNECTION.will.topicName.cstring );
+    DEBUG_LOG(220, "Mqtt Will Message: %s", MQTT_CONNECTION.will.message.cstring );
+
 }
 
 /**
@@ -430,18 +461,18 @@ void process_incoming_mqtt_message(MQTT::MessageData &md) {
 */
 
 bool is_command(std::string input) {
-  /*
+
 if (input == "0")
-  manage_leds(0);
+  DEBUG_LOG(100, "Command: %s\n", input.c_str());
 else if (input == "1")
-  manage_leds(1);
+  DEBUG_LOG(100, "Command: %s\n", input.c_str());
 else if (input == "2")
-  manage_leds(2);
+  DEBUG_LOG(100, "Command: %s\n", input.c_str());
 else if (input == "3")
-  manage_leds(3);
+  DEBUG_LOG(100, "Command: %s\n", input.c_str());
 else
   return false; // if one of above was true then else will not be executed
-  */
+
   return true;
 }
 
@@ -581,7 +612,7 @@ bool init_mqtt_client() {
   DEBUG_LOG(100, "Correcting Mqtt Client name");
   status = execute_step(correct_mqtt_client_name);
 
-  DEBUG_LOG(100, "Correcting Mqtt Client Last Will");
+  DEBUG_LOG(100, "Setting up Mqtt Client Last Will");
   status = execute_step(correct_mqtt_last_will_topic);
 
   // connect to wifi
