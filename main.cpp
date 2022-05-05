@@ -93,6 +93,7 @@ int unsubscribe_from_mqtt_topic();
 typedef int (*Step)();
 int execute_step(Step, int);
 void restart_controller();
+void read_mqtt_message();
 bool init_mqtt_client();
 
 /**
@@ -114,14 +115,17 @@ int main() {
 
   Timer mqtt_check;
   mqtt_check.start();
+  LowPowerTicker mqtt_read;
+  mqtt_read.attach(&read_mqtt_message, 2000ms);
 
   while (CONTINUE_EXECUTION) {
-      long time_since_last_check = mqtt_check.elapsed_time().count()/1000;
-      if(time_since_last_check >= 1000) {
-          printf("Time: %lu ms\n", time_since_last_check);
-          mqtt_client_var.yield();
-          mqtt_check.reset();
-      }
+    // get time in milliseconds
+    long time_since_last_check = mqtt_check.elapsed_time().count() / 1000;
+    if (time_since_last_check >= 2000) {
+      printf("Time: %lu ms\n", time_since_last_check);
+      // read_mqtt_message();
+      mqtt_check.reset();
+    }
   }
 
   mqtt_check.stop();
@@ -354,15 +358,15 @@ int set_mqtt_connection_params() {
 
   if (MQTT_CONNECTION.clientID.cstring != client_id) {
 
-      // create a ast will message, it is used when client is dead/disconnected
+    // create a ast will message, it is used when client is dead/disconnected
     MQTTPacket_willOptions WILL_MESSAGE;
     WILL_MESSAGE.qos = MQTT_PUB_QOS;
     WILL_MESSAGE.retained = MQTT_PUBLISH_RETAIN;
-    char *last_will_topic = (char *) mqtt_last_will_topic.c_str();
-    char *last_will_message = (char *) "0";
+    char *last_will_topic = (char *)mqtt_last_will_topic.c_str();
+    char *last_will_message = (char *)"0";
     WILL_MESSAGE.topicName.cstring = last_will_topic;
     WILL_MESSAGE.message.cstring = last_will_message;
-    
+
     MQTT_CONNECTION.MQTTVersion = 3;
     MQTT_CONNECTION.struct_version = 0;
     MQTT_CONNECTION.clientID.cstring = client_id;
@@ -389,16 +393,15 @@ int set_mqtt_connection_params() {
 ********************************************************
 */
 
-void show_mqtt_options(){
-    DEBUG_LOG(220, "Client Name: %s", MQTT_CONNECTION.clientID.cstring );
-    DEBUG_LOG(220, "Cleansession: %d", MQTT_CONNECTION.cleansession );
-    DEBUG_LOG(220, "Mqtt Version: %d", MQTT_CONNECTION.MQTTVersion );
-    DEBUG_LOG(220, "Mqtt Struct Version: %d", MQTT_CONNECTION.struct_version );    
-    DEBUG_LOG(220, "Mqtt User: %s", MQTT_CONNECTION.username.cstring );
-    DEBUG_LOG(220, "Mqtt Pass: %s", MQTT_CONNECTION.password.cstring );
-    DEBUG_LOG(220, "Mqtt Will Topic: %s", MQTT_CONNECTION.will.topicName.cstring );
-    DEBUG_LOG(220, "Mqtt Will Message: %s", MQTT_CONNECTION.will.message.cstring );
-
+void show_mqtt_options() {
+  DEBUG_LOG(220, "Client Name: %s", MQTT_CONNECTION.clientID.cstring);
+  DEBUG_LOG(220, "Cleansession: %d", MQTT_CONNECTION.cleansession);
+  DEBUG_LOG(220, "Mqtt Version: %d", MQTT_CONNECTION.MQTTVersion);
+  DEBUG_LOG(220, "Mqtt Struct Version: %d", MQTT_CONNECTION.struct_version);
+  DEBUG_LOG(220, "Mqtt User: %s", MQTT_CONNECTION.username.cstring);
+  DEBUG_LOG(220, "Mqtt Pass: %s", MQTT_CONNECTION.password.cstring);
+  DEBUG_LOG(220, "Mqtt Will Topic: %s", MQTT_CONNECTION.will.topicName.cstring);
+  DEBUG_LOG(220, "Mqtt Will Message: %s", MQTT_CONNECTION.will.message.cstring);
 }
 
 /**
@@ -462,16 +465,16 @@ void process_incoming_mqtt_message(MQTT::MessageData &md) {
 
 bool is_command(std::string input) {
 
-if (input == "0")
-  DEBUG_LOG(100, "Command: %s\n", input.c_str());
-else if (input == "1")
-  DEBUG_LOG(100, "Command: %s\n", input.c_str());
-else if (input == "2")
-  DEBUG_LOG(100, "Command: %s\n", input.c_str());
-else if (input == "3")
-  DEBUG_LOG(100, "Command: %s\n", input.c_str());
-else
-  return false; // if one of above was true then else will not be executed
+  if (input == "0")
+    DEBUG_LOG(100, "Command: %s\n", input.c_str());
+  else if (input == "1")
+    DEBUG_LOG(100, "Command: %s\n", input.c_str());
+  else if (input == "2")
+    DEBUG_LOG(100, "Command: %s\n", input.c_str());
+  else if (input == "3")
+    DEBUG_LOG(100, "Command: %s\n", input.c_str());
+  else
+    return false; // if one of above was true then else will not be executed
 
   return true;
 }
@@ -596,6 +599,13 @@ int execute_step(Step what_step, int max_attempts = 5) {
 */
 
 void restart_controller() { NVIC_SystemReset(); }
+
+/**
+********************************************************
+
+********************************************************
+*/
+void read_mqtt_message() { mqtt_client_var.yield(); }
 
 /**
 ********************************************************
