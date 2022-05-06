@@ -11,3 +11,4 @@ compile_commands.json
 mbed-mqtt
 libs
 tmp
+mbed_app.jso*
