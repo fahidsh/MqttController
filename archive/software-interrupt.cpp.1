@@ -1,0 +1,48 @@
+// Source: https://os.mbed.com/forum/mbed/topic/1828/
+// Datum: 06.05.2022
+
+#include "mbed.h"
+
+#define P0_22_SEL_MASK ~(3UL << 12)
+#define P0_22_SET_MASK (1UL << 22)
+#define P0_22_CLR_MASK ~(P0_22_SET_MASK)
+#define P0_22_AS_OUTPUT                                                        \
+  LPC_PINCON->PINSEL1 &= P0_22_SEL_MASK;                                       \
+  LPC_GPIO0->FIODIR |= P0_22_SET_MASK
+#define P0_22_AS_INPUT LPC_GPIO0->FIOMASK &= P0_22_CLR_MASK;
+#define P0_22_SET LPC_GPIO0->FIOSET = P0_22_SET_MASK
+#define P0_22_CLR LPC_GPIO0->FIOCLR = P0_22_SET_MASK
+#define P0_22_IS_SET (bool)(LPC_GPIO0->FIOPIN & P0_22_SET_MASK)
+#define P0_22_IS_CLR !(P0_22_IS_SET)
+#define P0_22_MODE(x)                                                          \
+  LPC_PINCON->PINMODE1 &= P0_22_SEL_MASK;                                      \
+  LPC_PINCON->PINMODE1 |= ((x & 0x3) << 12)
+
+DigitalOut myled(LED1);
+DigitalOut led2(LED2);
+InterruptIn mybool(P0_22);
+
+void led2on(void) { led2 = 1; }
+
+void led2off(void) { led2 = 0; }
+
+int main() {
+
+  // Setup InterruptIn as normal.
+  mybool.mode(PullUp);
+  mybool.rise(&led2on);
+  mybool.fall(&led2off);
+
+  // Now cheat, manually switch it to an output.
+  P0_22_AS_OUTPUT;
+
+  while (1) {
+    myled = 1;
+    P0_22_SET; // Set the bool and led2on() is called.
+    wait(0.2);
+
+    myled = 0;
+    P0_22_CLR; // Clear the bool and led2off() is called.
+    wait(0.2);
+  }
+}
