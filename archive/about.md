@@ -2,6 +2,10 @@
 All files are renamed to include a number after the extention .cpp, 
 so that don't have any infulence on the compilation.
 
+## Article about simulator
+https://aperles.blogs.upv.es/2020/04/15/simulation-emulation-of-the-stm32f4-discovery-board/
+
+
 ### main.cpp
 Mqtt is working, will message is working
 
