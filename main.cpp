@@ -14,7 +14,8 @@
 
 #include "ESP8266Interface.h"
 
-ESP8266Interface wifi(PB_10, PB_11, false); // Sturmboard
+//ESP8266Interface wifi(PB_10, PB_11, false); // Sturmboard
+ESP8266Interface wifi(PC_10, PC_11, false); //bastel lösung
 
 #ifndef SLEEP_TIME
 #define SLEEP_TIME 100ms
@@ -110,16 +111,16 @@ void motor_stop();
 */
 
 DigitalOut led(LED1);
-#define MOTOR_SCHRITT 3ms
+#define MOTOR_SCHRITT 2ms
 
 //PortOut motor1(PortC, 0b1111);
 //PortOut motor2(PortC, 0b11110000);
 PortOut motor1(PortC, 0b1111);
-PortOut motor2(PortC, 0b11110000);
+PortOut motor2(PortC, 0b1101100000);
 int motorlauf_links[] = {0b0001, 0b0011, 0b0010, 0b0110,
                          0b0100, 0b1100, 0b1000, 0b1001};
-int motorlauf_rechts[] = {0b1001, 0b1001, 0b1000, 0b1100, 0b0100,
-                          0b0110, 0b0010, 0b0011, 0b0001};
+int motorlauf_rechts[] = {0b10001, 0b10001, 0b10000, 0b11000, 0b01000,
+                          0b01010, 0b00010, 0b00011, 0b00001};
 
 int position_motor1 = 0;
 int position_motor2 = 0;
@@ -127,14 +128,14 @@ enum MotorState{STOP, VORWART, RUECKWART};
 volatile MotorState motor_richtung = STOP;
 
 // Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
-InterruptIn taster1(PA_1, PullDown);
-InterruptIn taster2(PA_6, PullDown);
-InterruptIn taster3(PA_10, PullDown);
+//InterruptIn taster1(PA_1, PullDown);
+//InterruptIn taster2(PA_6, PullDown);
+//InterruptIn taster3(PA_10, PullDown);
 // Taster 1,2,3 auf MF-Shield
 // Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
-//InterruptIn taster1(PA_1, PullUp);
-//InterruptIn taster2(PA_4, PullUp);
-//InterruptIn taster3(PB_0, PullUp);
+InterruptIn taster1(PA_1, PullUp);
+InterruptIn taster2(PA_4, PullUp);
+InterruptIn taster3(PB_0, PullUp);
 
 // Zwei Threads, jeweils für beide Motoren
 Thread motor1_thread;
@@ -149,7 +150,7 @@ bool init() { return init_mqtt_client(); }
 
 // main() runs in its own thread in the OS
 int main() {
-    led = 1;
+
   bool INIT_SUCCESS = init();
   if (!INIT_SUCCESS) {
     //printf("ERROR: unable to initialize properly, restarting Microcontroller");
@@ -171,11 +172,16 @@ int main() {
 
   Timer mqtt_check;
   mqtt_check.start();
-
-  int check_mqtt_after = 2500; // 2,5 Sekunden
+  // LowPowerTicker mqtt_read;
+  // mqtt_read.attach(&read_mqtt_message, 2000ms);
+  //int seconds = 0;
+  //int minutes = 0;
+  //int hours = 0;
+  int check_mqtt_after = 2500;
   int last_mqtt_check = 0;
 
-  while (CONTINUE_EXECUTION) {
+  //while (CONTINUE_EXECUTION) {
+  while (1) {
     // get time in milliseconds
     long time_since_last_check = mqtt_check.elapsed_time().count() / 1000;
 
@@ -192,9 +198,15 @@ int main() {
 
     }
     ThisThread::sleep_for(50ms);
-    led = ! led;
+    /*
+    if (time_since_last_check / 1000 >= seconds + 1) {
+      seconds = time_since_last_check / 1000;
+      minutes = seconds / 60;
+      hours = minutes / 60;
+      printf("%02d : %02d : %02d\n", hours % 24, minutes % 60, seconds % 60);
+    }
+    */
   }
-    led = 1;
   mqtt_check.stop();
   return 0;
   //printf("Programm beendet, reset to continue\n");
@@ -754,12 +766,15 @@ void motor1_controller() {
 }
 
 void motor2_controller() {
+    DigitalOut m2[] = {PC_5, PC_6, PC_8, PC_9};
   while (true) {
-    if (motor_richtung != 0) {
+    
+    if (motor_richtung != STOP) {
       // array wert an die Pins schicken, um 4 bits verschieben
-      motor2 = motorlauf_rechts[position_motor2 % 8] << 8;
+      motor2 = motorlauf_rechts[position_motor2 % 8] <<5;
       position_motor2 += (motor_richtung == VORWART) ? 1 : -1;
     }
+    
     ThisThread::sleep_for(MOTOR_SCHRITT);
   }
 }
