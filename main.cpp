@@ -14,7 +14,7 @@
 
 #include "ESP8266Interface.h"
 
-ESP8266Interface wifi(PB_10, PB_11, false);
+ESP8266Interface wifi(PB_10, PB_11, false); // Sturmboard
 
 #ifndef SLEEP_TIME
 #define SLEEP_TIME 100ms
@@ -27,7 +27,7 @@ ESP8266Interface wifi(PB_10, PB_11, false);
 // use the following line while Debugging
 #define DEBUG_LOG log_message
 // use the following line in Production
-//#define DEBUG_LOG //
+//#define DEBUG_LOG log_message_production
 #endif
 
 // Mqtt Broker
@@ -39,9 +39,9 @@ const std::string MQTT_USER = "";
 // Mqtt password (optional)
 const std::string MQTT_PASSWORD = "";
 // Topic to subscribe to
-const std::string MQTT_SUB_TOPIC = "public/mbed/fahid/#";
+const std::string MQTT_SUB_TOPIC = "public/mbed/fahid";
 // Topic to publish to
-const std::string MQTT_PUB_TOPIC = "public/mbed/sh";
+const std::string MQTT_PUB_TOPIC = "public/mbed/fahid";
 // Topic for last will message
 const std::string MQTT_WILL_TOPIC_PREFIX = "public/mbed/fahid";
 // QOS for Subscription
@@ -49,22 +49,18 @@ const MQTT::QoS MQTT_SUB_QOS = MQTT::QOS2;
 // QOS for publish
 const MQTT::QoS MQTT_PUB_QOS = MQTT::QOS0;
 // Publish Retain
-const bool MQTT_PUBLISH_RETAIN = true;
+const bool MQTT_PUBLISH_RETAIN = false;
 
 std::string mqtt_client_name = "mbed-app-";
 std::string mqtt_last_will_topic = MQTT_WILL_TOPIC_PREFIX;
 const unsigned int MQTT_MESSAGE_MAXLENGTH = 100;
 MQTTPacket_connectData MQTT_CONNECTION = MQTTPacket_connectData_initializer;
-const bool MQTT_LIMITED_SESSION = false;
-const int MQTT_MAX_MESSAGES_IN = 10;
-const int MQTT_MAX_MESSAGES_OUT = 10;
 unsigned int mqtt_messages_sent = 0;
 unsigned int mqtt_messages_received = 0;
-unsigned int publish_failed = 0;
-volatile bool mqtt_connection_ok = false;
-unsigned int yield_value = 1;
 bool critical_failure = false;
 bool CONTINUE_EXECUTION = true;
+volatile bool mqtt_publish = false;
+
 
 /**
 ********************************************************
@@ -81,6 +77,7 @@ MQTTClient mqtt_client_var(&tcp_socket_subscriber);
 ********************************************************
 */
 void log_message(int, const char *, ...);
+void log_message_production(int, const char *, ...);
 bool is_command(std::string);
 int correct_mqtt_client_name();
 int correct_mqtt_last_will_topic();
@@ -89,7 +86,7 @@ int resolve_mqtt_servername();
 int open_socket();
 int set_mqtt_port();
 int set_mqtt_connection_params();
-void publish_message_to_mqtt(std::string, std::string);
+void publish_message_to_mqtt(std::string, std::string = MQTT_PUB_TOPIC);
 void process_incoming_mqtt_message(MQTT::MessageData);
 int connect_to_mqtt_server();
 int disconnect_from_mqtt_server();
@@ -112,8 +109,11 @@ void motor_stop();
 ********************************************************
 */
 
-#define MOTOR_SCHRITT 2ms
+DigitalOut led(LED1);
+#define MOTOR_SCHRITT 3ms
 
+//PortOut motor1(PortC, 0b1111);
+//PortOut motor2(PortC, 0b11110000);
 PortOut motor1(PortC, 0b1111);
 PortOut motor2(PortC, 0b11110000);
 int motorlauf_links[] = {0b0001, 0b0011, 0b0010, 0b0110,
@@ -121,13 +121,20 @@ int motorlauf_links[] = {0b0001, 0b0011, 0b0010, 0b0110,
 int motorlauf_rechts[] = {0b1001, 0b1001, 0b1000, 0b1100, 0b0100,
                           0b0110, 0b0010, 0b0011, 0b0001};
 
-int position = 0;
-volatile int motor_richtung = 1; // -1 für Rückwarts, 0 zum stoppen
+int position_motor1 = 0;
+int position_motor2 = 0;
+enum MotorState{STOP, VORWART, RUECKWART};
+volatile MotorState motor_richtung = STOP;
 
 // Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
 InterruptIn taster1(PA_1, PullDown);
 InterruptIn taster2(PA_6, PullDown);
 InterruptIn taster3(PA_10, PullDown);
+// Taster 1,2,3 auf MF-Shield
+// Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
+//InterruptIn taster1(PA_1, PullUp);
+//InterruptIn taster2(PA_4, PullUp);
+//InterruptIn taster3(PB_0, PullUp);
 
 // Zwei Threads, jeweils für beide Motoren
 Thread motor1_thread;
@@ -142,13 +149,15 @@ bool init() { return init_mqtt_client(); }
 
 // main() runs in its own thread in the OS
 int main() {
+    led = 1;
   bool INIT_SUCCESS = init();
   if (!INIT_SUCCESS) {
-    printf("ERROR: unable to initialize properly, restarting Microcontroller");
+    //printf("ERROR: unable to initialize properly, restarting Microcontroller");
     CONTINUE_EXECUTION = false;
     // restart_controller();
   }
 
+    
   // Threads für beide Motoren starten
   motor1_thread.start(motor1_controller);
   motor2_thread.start(motor2_controller);
@@ -162,30 +171,33 @@ int main() {
 
   Timer mqtt_check;
   mqtt_check.start();
-  // LowPowerTicker mqtt_read;
-  // mqtt_read.attach(&read_mqtt_message, 2000ms);
-  int seconds = 0;
-  int minutes = 0;
-  int hours = 0;
-  int check_mqtt_after = 2;
+
+  int check_mqtt_after = 2500; // 2,5 Sekunden
+  int last_mqtt_check = 0;
 
   while (CONTINUE_EXECUTION) {
     // get time in milliseconds
     long time_since_last_check = mqtt_check.elapsed_time().count() / 1000;
 
-    if (time_since_last_check / 1000 >= seconds + 1) {
-      if (time_since_last_check / 1000 >= seconds + check_mqtt_after) {
-        read_mqtt_message();
-      }
-      seconds = time_since_last_check / 1000;
-      minutes = seconds / 60;
-      hours = minutes / 60;
-      printf("%02d : %02d : %02d\n", hours % 24, minutes % 60, seconds % 60);
-    }
-  }
+    if (time_since_last_check >= last_mqtt_check + check_mqtt_after) {
+        if(mqtt_publish){
+            ThisThread::sleep_for(500ms);
+            publish_message_to_mqtt(std::to_string(motor_richtung));
+            mqtt_publish = false;
+        }
+        else{
+            read_mqtt_message();
+        }
+        last_mqtt_check = time_since_last_check;
 
+    }
+    ThisThread::sleep_for(50ms);
+    led = ! led;
+  }
+    led = 1;
   mqtt_check.stop();
-  printf("Programm beendet, reset to continue\n");
+  return 0;
+  //printf("Programm beendet, reset to continue\n");
 }
 
 /**
@@ -203,7 +215,7 @@ int main() {
 
 ********************************************************
 */
-
+void log_message_production(int, const char *, ...){return;}
 void log_message(int sender = 99, const char *message_with_args = "", ...) {
   va_list arg;
   va_start(arg, message_with_args);
@@ -467,7 +479,7 @@ void show_mqtt_options() {
 */
 
 void publish_message_to_mqtt(std::string mqtt_message,
-                             std::string topic_to_publish_to = MQTT_PUB_TOPIC) {
+                             std::string topic_to_publish_to) {
 
   char parsed_mqtt_message[MQTT_MESSAGE_MAXLENGTH];
 
@@ -489,6 +501,7 @@ void publish_message_to_mqtt(std::string mqtt_message,
             message_length, topic, mqtt_message.c_str());
 
   mqtt_messages_sent++;
+  
 }
 
 /**
@@ -505,9 +518,7 @@ void process_incoming_mqtt_message(MQTT::MessageData &md) {
   std::string mqtt_message = (char *)message.payload;
   mqtt_message = mqtt_message.substr(0, msg_length);
 
-  if (is_command(mqtt_message)) {
-    DEBUG_LOG(110, "Mqtt Command executed");
-  } else {
+  if (!is_command(mqtt_message)) {
     DEBUG_LOG(0, "MSG RCVD: {%d, %d, %s}", mqtt_messages_received, msg_length,
               mqtt_message.c_str());
   }
@@ -520,18 +531,21 @@ void process_incoming_mqtt_message(MQTT::MessageData &md) {
 */
 
 bool is_command(std::string input) {
+    if(std::to_string(motor_richtung) == input){
+        return true;
+    }
 
   if (input == "0") {
-    motor_stop();
-    DEBUG_LOG(100, "Command: %s: Motor Stop", input.c_str());
+    motor_richtung = STOP;
+    DEBUG_LOG(100, "Mqtt Command: %s: Motor Stop", input.c_str());
   } else if (input == "1") {
-    motor_lauf_vorwart();
-    DEBUG_LOG(100, "Command: %s: Motor Lauf Vorwart", input.c_str());
+    motor_richtung = VORWART;
+    DEBUG_LOG(100, "Mqtt Command: %s: Motor Lauf Vorwart", input.c_str());
   } else if (input == "2") {
-    motor_lauf_ruckwart();
-    DEBUG_LOG(100, "Command: %s: Motor Lauf Ruckwart", input.c_str());
+    motor_richtung = RUECKWART;
+    DEBUG_LOG(100, "Mqtt Command: %s: Motor Lauf Ruckwart", input.c_str());
   } else if (input == "3") {
-    DEBUG_LOG(100, "Command: %s: Beispiel Befehl", input.c_str());
+    DEBUG_LOG(100, "Mqtt Command: %s: Beispiel Befehl", input.c_str());
   } else
     return false; // if one of above was true then else will not be executed
 
@@ -664,7 +678,11 @@ void restart_controller() { NVIC_SystemReset(); }
 
 ********************************************************
 */
-void read_mqtt_message() { mqtt_client_var.yield(); }
+void read_mqtt_message() { 
+    if(!mqtt_publish){
+        mqtt_client_var.yield(); 
+    }
+}
 
 /**
 ********************************************************
@@ -723,11 +741,13 @@ bool init_mqtt_client() {
 void motor1_controller() {
   while (true) {
     // nur was tun wenn motor_richtung nicht gleich null ist.
-    if (motor_richtung != 0) {
+    if (motor_richtung != STOP) {
       // array Wert an die Pins von Port schicken
-      motor1 = motorlauf_links[position % 8];
-      // position um erhöhen/mindern
-      position += motor_richtung;
+      motor1 = motorlauf_links[position_motor1 % 8];
+
+      // wenn motor_richtung ist vorwart, dann addiere 1
+      // wenn motor_richtung ist rückwart, dann subtractiere 1
+      position_motor1 += (motor_richtung == VORWART) ? 1 : -1;
     }
     ThisThread::sleep_for(MOTOR_SCHRITT);
   }
@@ -737,7 +757,8 @@ void motor2_controller() {
   while (true) {
     if (motor_richtung != 0) {
       // array wert an die Pins schicken, um 4 bits verschieben
-      motor2 = motorlauf_rechts[position % 8] << 4;
+      motor2 = motorlauf_rechts[position_motor2 % 8] << 8;
+      position_motor2 += (motor_richtung == VORWART) ? 1 : -1;
     }
     ThisThread::sleep_for(MOTOR_SCHRITT);
   }
@@ -748,9 +769,18 @@ void motor2_controller() {
 ********************************************************
 */
 
-void motor_lauf_vorwart() { motor_richtung = 1; }
-void motor_lauf_ruckwart() { motor_richtung = -1; }
-void motor_stop() { motor_richtung = 0; }
+void motor_stop() { 
+    motor_richtung = STOP; 
+    mqtt_publish = true;
+}
+void motor_lauf_vorwart() { 
+    motor_richtung = VORWART;
+    mqtt_publish = true;
+}
+void motor_lauf_ruckwart() { 
+    motor_richtung = RUECKWART; 
+    mqtt_publish = true;
+}
 
 /**
 ********************************************************
