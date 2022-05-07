@@ -14,8 +14,8 @@
 
 #include "ESP8266Interface.h"
 
-//ESP8266Interface wifi(PB_10, PB_11, false); // Sturmboard
-ESP8266Interface wifi(PC_10, PC_11, false); //bastel lösung
+// ESP8266Interface wifi(PB_10, PB_11, false); // Sturmboard
+ESP8266Interface wifi(PC_10, PC_11, false); // bastel lösung
 
 #ifndef SLEEP_TIME
 #define SLEEP_TIME 100ms
@@ -61,7 +61,6 @@ unsigned int mqtt_messages_received = 0;
 bool critical_failure = false;
 bool CONTINUE_EXECUTION = true;
 volatile bool mqtt_publish = false;
-
 
 /**
 ********************************************************
@@ -113,8 +112,8 @@ void motor_stop();
 DigitalOut led(LED1);
 #define MOTOR_SCHRITT 2ms
 
-//PortOut motor1(PortC, 0b1111);
-//PortOut motor2(PortC, 0b11110000);
+// PortOut motor1(PortC, 0b1111);
+// PortOut motor2(PortC, 0b11110000);
 PortOut motor1(PortC, 0b1111);
 PortOut motor2(PortC, 0b1101100000);
 int motorlauf_links[] = {0b0001, 0b0011, 0b0010, 0b0110,
@@ -124,13 +123,13 @@ int motorlauf_rechts[] = {0b10001, 0b10001, 0b10000, 0b11000, 0b01000,
 
 int position_motor1 = 0;
 int position_motor2 = 0;
-enum MotorState{STOP, VORWART, RUECKWART};
+enum MotorState { STOP, VORWART, RUECKWART };
 volatile MotorState motor_richtung = STOP;
 
 // Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
-//InterruptIn taster1(PA_1, PullDown);
-//InterruptIn taster2(PA_6, PullDown);
-//InterruptIn taster3(PA_10, PullDown);
+// InterruptIn taster1(PA_1, PullDown);
+// InterruptIn taster2(PA_6, PullDown);
+// InterruptIn taster3(PA_10, PullDown);
 // Taster 1,2,3 auf MF-Shield
 // Taster 1,2,3 auf Sturmboard, alle als Interrupts mit PullDown Modus
 InterruptIn taster1(PA_1, PullUp);
@@ -153,12 +152,12 @@ int main() {
 
   bool INIT_SUCCESS = init();
   if (!INIT_SUCCESS) {
-    //printf("ERROR: unable to initialize properly, restarting Microcontroller");
+    // printf("ERROR: unable to initialize properly, restarting
+    // Microcontroller");
     CONTINUE_EXECUTION = false;
     // restart_controller();
   }
 
-    
   // Threads für beide Motoren starten
   motor1_thread.start(motor1_controller);
   motor2_thread.start(motor2_controller);
@@ -174,28 +173,26 @@ int main() {
   mqtt_check.start();
   // LowPowerTicker mqtt_read;
   // mqtt_read.attach(&read_mqtt_message, 2000ms);
-  //int seconds = 0;
-  //int minutes = 0;
-  //int hours = 0;
+  // int seconds = 0;
+  // int minutes = 0;
+  // int hours = 0;
   int check_mqtt_after = 2500;
   int last_mqtt_check = 0;
 
-  //while (CONTINUE_EXECUTION) {
+  // while (CONTINUE_EXECUTION) {
   while (1) {
     // get time in milliseconds
     long time_since_last_check = mqtt_check.elapsed_time().count() / 1000;
 
     if (time_since_last_check >= last_mqtt_check + check_mqtt_after) {
-        if(mqtt_publish){
-            ThisThread::sleep_for(500ms);
-            publish_message_to_mqtt(std::to_string(motor_richtung));
-            mqtt_publish = false;
-        }
-        else{
-            read_mqtt_message();
-        }
-        last_mqtt_check = time_since_last_check;
-
+      if (mqtt_publish) {
+        ThisThread::sleep_for(500ms);
+        publish_message_to_mqtt(std::to_string(motor_richtung));
+        mqtt_publish = false;
+      } else {
+        read_mqtt_message();
+      }
+      last_mqtt_check = time_since_last_check;
     }
     ThisThread::sleep_for(50ms);
     /*
@@ -209,7 +206,7 @@ int main() {
   }
   mqtt_check.stop();
   return 0;
-  //printf("Programm beendet, reset to continue\n");
+  // printf("Programm beendet, reset to continue\n");
 }
 
 /**
@@ -227,7 +224,7 @@ int main() {
 
 ********************************************************
 */
-void log_message_production(int, const char *, ...){return;}
+void log_message_production(int, const char *, ...) { return; }
 void log_message(int sender = 99, const char *message_with_args = "", ...) {
   va_list arg;
   va_start(arg, message_with_args);
@@ -513,7 +510,6 @@ void publish_message_to_mqtt(std::string mqtt_message,
             message_length, topic, mqtt_message.c_str());
 
   mqtt_messages_sent++;
-  
 }
 
 /**
@@ -543,9 +539,9 @@ void process_incoming_mqtt_message(MQTT::MessageData &md) {
 */
 
 bool is_command(std::string input) {
-    if(std::to_string(motor_richtung) == input){
-        return true;
-    }
+  if (std::to_string(motor_richtung) == input) {
+    return true;
+  }
 
   if (input == "0") {
     motor_richtung = STOP;
@@ -690,10 +686,10 @@ void restart_controller() { NVIC_SystemReset(); }
 
 ********************************************************
 */
-void read_mqtt_message() { 
-    if(!mqtt_publish){
-        mqtt_client_var.yield(); 
-    }
+void read_mqtt_message() {
+  if (!mqtt_publish) {
+    mqtt_client_var.yield();
+  }
 }
 
 /**
@@ -766,15 +762,15 @@ void motor1_controller() {
 }
 
 void motor2_controller() {
-    DigitalOut m2[] = {PC_5, PC_6, PC_8, PC_9};
+  DigitalOut m2[] = {PC_5, PC_6, PC_8, PC_9};
   while (true) {
-    
+
     if (motor_richtung != STOP) {
       // array wert an die Pins schicken, um 4 bits verschieben
-      motor2 = motorlauf_rechts[position_motor2 % 8] <<5;
+      motor2 = motorlauf_rechts[position_motor2 % 8] << 5;
       position_motor2 += (motor_richtung == VORWART) ? 1 : -1;
     }
-    
+
     ThisThread::sleep_for(MOTOR_SCHRITT);
   }
 }
@@ -784,17 +780,17 @@ void motor2_controller() {
 ********************************************************
 */
 
-void motor_stop() { 
-    motor_richtung = STOP; 
-    mqtt_publish = true;
+void motor_stop() {
+  motor_richtung = STOP;
+  mqtt_publish = true;
 }
-void motor_lauf_vorwart() { 
-    motor_richtung = VORWART;
-    mqtt_publish = true;
+void motor_lauf_vorwart() {
+  motor_richtung = VORWART;
+  mqtt_publish = true;
 }
-void motor_lauf_ruckwart() { 
-    motor_richtung = RUECKWART; 
-    mqtt_publish = true;
+void motor_lauf_ruckwart() {
+  motor_richtung = RUECKWART;
+  mqtt_publish = true;
 }
 
 /**
